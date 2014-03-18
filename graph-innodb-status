@@ -1,0 +1,72 @@
+#!/usr/bin/perl -w
+use strict;
+use Data::Dumper;
+require "innotop";
+my $innodb_parser = new InnoDBParser;
+
+
+my $mysql_version = '5.5.36';
+
+my @interests = (
+    ['ro','ins_sec','inserts/s'],
+    ['bp','buf_free','buffer pool free pages'],
+    ['bp','page_reads_sec', 'buffer pool reads/s'],
+    ['io','writes_s', 'io writes/s'],
+    #['lg','log_ios_s', 'log ios/s']
+);
+
+my $status_count=0;
+my $complete_status = 2;
+my $contents='';
+
+print "{\n";
+print '"graph_options": {"title": "data",
+                      "width": 2048, "height": 600,
+                      "vAxis": {"title": "values", "titleTextStyle": {"color": "green"}},
+                      "hAxis": {"title": "time", "titleTextStyle": {"color": "green"}},
+                      "pointSize": 1},'."\n";
+
+#      cols: [{id: 'time', label: 'seconds', type: 'number'},{id: 'inserts', label: 'inserts/s', type: 'number'}],
+print '"graph_data": {"cols": [{"id": "time", "label": "time", "type": "number"},';
+print join ",", map {sprintf '{"id": "%s/%s", "label": "%s", "type": "number"}', $_->[0], $_->[1], $_->[2]} @interests;
+print '],'."\n".'"rows": [';
+
+while (<STDIN>) {
+    next if $complete_status==2 and not /^=====================================$/;
+    $complete_status=0 if $complete_status==2 and /^=====================================$/;
+         
+
+    $contents.=$_;
+
+    #print "$contents\n";
+
+    if ($complete_status==1) {
+        #print "COMPLETE\n\n";
+        #print "$contents\n";
+        my $innodb_status = $innodb_parser->parse_status_text(
+            $contents,
+            0,
+            # Omit the following parameter to get all sections.
+            undef,#{  tx => 0 },
+            0,
+            $mysql_version
+        );
+    #    if ($innodb_status->{sections}->{bp}->{buf_free} < 8200) {
+            #$Data::Dumper::Indent = 2;
+            #print Dumper $innodb_status;
+            print "," if $status_count;
+            printf '{"c":[{"v": %i}, ', $status_count;
+            print join ",", map { sprintf '{"v": %i}', $innodb_status->{sections}->{$_->[0]}->{$_->[1]} } @interests;
+            print "]}\n";
+    #    }
+
+        $complete_status=2;
+        $contents='';
+        $status_count++;
+    }
+
+    $complete_status = 1 if /^============================$/;
+
+}
+
+print "]}}\n";
