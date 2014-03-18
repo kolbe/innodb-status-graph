@@ -1,0 +1,64 @@
+<html>
+  <head>
+    <!--Load the AJAX API-->
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript" src="/jquery.js"></script>
+    <script type="text/javascript">
+
+	function getSearchParameters() {
+		var prmstr = window.location.search.substr(1);
+		return prmstr != null && prmstr != "" ? transformToAssocArray(prmstr) : {};
+	}
+
+	function transformToAssocArray( prmstr ) {
+		var params = {};
+		var prmarr = prmstr.split("&");
+		for ( var i = 0; i < prmarr.length; i++) {
+			var tmparr = prmarr[i].split("=");
+			params[tmparr[0]] = tmparr[1];
+		}
+		return params;
+	}
+
+	var params = getSearchParameters();
+
+	chart_definition = null;
+	google_loaded = null;
+
+	$.ajax({
+		dataType: "json",
+		url: "./data/"+params['d']+".data",
+		success: function(json) {
+			chart_definition = json;
+			engage();
+		},
+		error: function(jq,textStatus,errorThrown) {
+			alert(textStatus + '\n' + errorThrown);
+		}
+	});
+
+	// Load the Visualization API and the piechart package.
+	google.load('visualization', '1.0', {'packages':['corechart']});
+
+	// Set a callback to run when the Google Visualization API is loaded.
+	google.setOnLoadCallback(function() { google_loaded=1; engage(); });
+
+	function engage() {
+		if (chart_definition && google_loaded) {
+			drawChart();
+		}
+	}
+
+	function drawChart() {
+		var data = new google.visualization.DataTable(chart_definition['graph_data']);
+		var chart = new google.visualization.ScatterChart(document.getElementById('visualization'));
+		chart.draw(data,chart_definition['graph_options']);
+
+	}
+    </script>
+  </head>
+
+  <body>
+    <div id="visualization"></div>
+  </body>
+</html>
