@@ -1,18 +1,38 @@
 #!/usr/bin/perl -w
+#
+# Copyright 2014 (c) Kolbe Kegel
+#
+# Author: Kolbe Kegel <kolbe@kolbekegel.com>
+#
+# This file is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the
+# Free Software Foundation, version 2.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 51
+# Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
 use strict;
 use Data::Dumper;
+#use DateTime;
 require "innotop";
 my $innodb_parser = new InnoDBParser;
 
 
-my $mysql_version = '5.5.36';
+my $mysql_version = '5.6.16';
 
 my @interests = (
-    ['ro','ins_sec','inserts/s'],
-    ['bp','buf_free','buffer pool free pages'],
-    ['bp','page_reads_sec', 'buffer pool reads/s'],
-    ['io','writes_s', 'io writes/s'],
-    #['lg','log_ios_s', 'log ios/s']
+    {section => 'ro', item => 'ins_sec', name => 'inserts/s'},
+    {section => 'bp', item => 'buf_free', name => 'buffer pool free pages'},
+    {section => 'bp', item => 'page_reads_sec', name =>  'buffer pool reads/s'},
+    #{section => 'io', item => 'writes_s', name =>  'io writes/s'},
+    {section => 'io', item => 'reads_s', name =>  'io reads/s', offset => '200'},
+    #{section => 'lg', item => 'log_ios_s', name =>  'log ios/s'}
 );
 
 my $status_count=0;
@@ -20,29 +40,18 @@ my $complete_status = 2;
 my $contents='';
 
 print "{\n";
-print '"graph_options": {"title": "data",
-                      "width": 2048, "height": 600,
-                      "vAxis": {"title": "values", "titleTextStyle": {"color": "green"}},
-                      "hAxis": {"title": "time", "titleTextStyle": {"color": "green"}},
-                      "pointSize": 1},'."\n";
-
-#      cols: [{id: 'time', label: 'seconds', type: 'number'},{id: 'inserts', label: 'inserts/s', type: 'number'}],
-print '"graph_data": {"cols": [{"id": "time", "label": "time", "type": "number"},';
-print join ",", map {sprintf '{"id": "%s/%s", "label": "%s", "type": "number"}', $_->[0], $_->[1], $_->[2]} @interests;
-print '],'."\n".'"rows": [';
+print '"graph_options": {"explorer": {}, "height": 600, "chartArea": {"width": "100%", "height": "80%"}, "legend": {"position": "bottom"}, "pointSize": 1},'."\n";
+print '"graph_data": {"cols": [{"id": "time", "label": "timestamp", "type": "datetime"},';
+print join ",", map {sprintf '{"id": "%s/%s", "label": "%s", "type": "number"}', $_->{section}, $_->{item}, $_->{name} . (defined $_->{offset} ? (" (+".$_->{offset}.")") : "")} @interests;
+print "],\n\"rows\": [";
 
 while (<STDIN>) {
     next if $complete_status==2 and not /^=====================================$/;
     $complete_status=0 if $complete_status==2 and /^=====================================$/;
          
-
     $contents.=$_;
 
-    #print "$contents\n";
-
     if ($complete_status==1) {
-        #print "COMPLETE\n\n";
-        #print "$contents\n";
         my $innodb_status = $innodb_parser->parse_status_text(
             $contents,
             0,
@@ -52,11 +61,23 @@ while (<STDIN>) {
             $mysql_version
         );
     #    if ($innodb_status->{sections}->{bp}->{buf_free} < 8200) {
-            #$Data::Dumper::Indent = 2;
+            $Data::Dumper::Indent = 2;
             #print Dumper $innodb_status;
             print "," if $status_count;
-            printf '{"c":[{"v": %i}, ', $status_count;
-            print join ",", map { sprintf '{"v": %i}', $innodb_status->{sections}->{$_->[0]}->{$_->[1]} } @interests;
+            my $ts = $innodb_status->{ts};
+=pod
+            my $d = DateTime->new(
+                year => $ts->[0], 
+                month => $ts->[1], 
+                day => $ts->[2], 
+                hour => $ts->[3],
+                minute => $ts->[4], 
+                second => $ts->[5]);
+            #printf '{"c":[{"v": %i}, ', $d->epoch;
+=cut
+            printf '{"c":[{"v": "Date(%i, %i, %i, %i, %i, %i)"}, ', $ts->[0], $ts->[1]-1, $ts->[2], $ts->[3], $ts->[4], $ts->[5];
+
+            print join ",", map { sprintf '{"v": %i}', $innodb_status->{sections}->{$_->{section}}->{$_->{item}} + ($_->{offset} // 0) } @interests;
             print "]}\n";
     #    }
 
